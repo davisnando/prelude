@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <!-- Prelude: two interlocking speech bubbles (you and the agent) on a macOS squircle. -->
+  <defs>
+    <!-- knockouts around the two points where the rings cross -->
+    <clipPath id="amberGap"><circle cx="436.3" cy="436.3" r="80"/></clipPath>
+    <clipPath id="tealGap"><circle cx="587.7" cy="587.7" r="80"/></clipPath>
+    <!-- wider clips for the redrawn bands, so their edges land on same-colour pixels -->
+    <clipPath id="amberBand"><circle cx="436.3" cy="436.3" r="125"/></clipPath>
+    <clipPath id="tealBand"><circle cx="587.7" cy="587.7" r="125"/></clipPath>
+  </defs>
+
+  <rect x="100" y="100" width="824" height="824" rx="185" fill="#FAFBFD"/>
+
+  <!-- teal bubble, tail down-left -->
+  <polygon points="379.2,724.3 299.7,644.8 246.9,777.1" fill="#1FB5C9"/>
+  <circle cx="437.8" cy="586.2" r="150" fill="none" stroke="#1FB5C9" stroke-width="56"/>
+  <circle cx="420.1" cy="603.9" r="34" fill="#1FB5C9"/>
+
+  <!-- amber bubble, tail up-right -->
+  <polygon points="724.3,379.2 644.8,299.7 777.1,246.9" fill="#FFB224"/>
+  <circle cx="586.2" cy="437.8" r="150" fill="none" stroke="#FFB224" stroke-width="56"/>
+  <circle cx="603.9" cy="420.1" r="34" fill="#FFB224"/>
+
+  <!-- amber over teal at the upper-left crossing -->
+  <circle clip-path="url(#amberGap)" cx="586.2" cy="437.8" r="150" fill="none" stroke="#FAFBFD" stroke-width="88"/>
+  <circle clip-path="url(#amberBand)" cx="586.2" cy="437.8" r="150" fill="none" stroke="#FFB224" stroke-width="56"/>
+
+  <!-- teal over amber at the lower-right crossing -->
+  <circle clip-path="url(#tealGap)" cx="437.8" cy="586.2" r="150" fill="none" stroke="#FAFBFD" stroke-width="88"/>
+  <circle clip-path="url(#tealBand)" cx="437.8" cy="586.2" r="150" fill="none" stroke="#1FB5C9" stroke-width="56"/>
+</svg>
