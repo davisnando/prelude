@@ -1,0 +1,23 @@
+#!/bin/sh
+# Opens Prelude on a git repository: `prelude [path]` (defaults to the current directory).
+# If Prelude is already running, the repo opens in a new window of that instance.
+
+APP="${PRELUDE_APP:-/Applications/Prelude.app}"
+BIN="$APP/Contents/MacOS/prelude"
+
+if [ ! -x "$BIN" ]; then
+  echo "prelude: app not found at $APP (set PRELUDE_APP to its location)" >&2
+  exit 1
+fi
+
+target="${1:-.}"
+dir=$(cd "$target" 2>/dev/null && pwd) || {
+  echo "prelude: not a directory: $target" >&2
+  exit 1
+}
+if ! git -C "$dir" rev-parse --show-toplevel >/dev/null 2>&1; then
+  echo "prelude: not inside a git repository: $dir" >&2
+  exit 1
+fi
+
+nohup "$BIN" "$dir" >/dev/null 2>&1 &
