@@ -73,14 +73,14 @@ fn relevant(root: &Path, paths: Vec<PathBuf>) -> bool {
     candidates.iter().any(|c| !ignored.contains(c))
 }
 
-pub fn watch(app: AppHandle, watchers: &Watchers, label: String, root: PathBuf) -> Result<(), String> {
-    let target = label.clone();
+/// Watches `root` and calls `on_change` (debounced) whenever something relevant to the diff changes.
+pub fn start(root: PathBuf, on_change: impl Fn() + Send + 'static) -> Result<Debouncer<RecommendedWatcher>, String> {
     let watch_root = root.clone();
     let mut debouncer = new_debouncer(Duration::from_millis(300), move |res: DebounceEventResult| {
         if let Ok(events) = res {
             let paths = events.into_iter().map(|e| e.path).collect();
             if relevant(&watch_root, paths) {
-                let _ = app.emit_to(target.as_str(), "repo-changed", ());
+                on_change();
             }
         }
     })
@@ -89,6 +89,14 @@ pub fn watch(app: AppHandle, watchers: &Watchers, label: String, root: PathBuf) 
         .watcher()
         .watch(&root, RecursiveMode::Recursive)
         .map_err(|e| e.to_string())?;
+    Ok(debouncer)
+}
+
+pub fn watch(app: AppHandle, watchers: &Watchers, label: String, root: PathBuf) -> Result<(), String> {
+    let target = label.clone();
+    let debouncer = start(root.clone(), move || {
+        let _ = app.emit_to(target.as_str(), "repo-changed", ());
+    })?;
     watchers.0.lock().unwrap().insert(label, (root, debouncer));
     Ok(())
 }

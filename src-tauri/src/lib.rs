@@ -1,3 +1,4 @@
+mod headless;
 mod diff;
 mod git;
 mod store;
@@ -34,7 +35,11 @@ fn initial_repo(window: WebviewWindow, launch: State<Launch>) -> Option<String> 
 
 #[tauri::command]
 async fn open_repo(path: String) -> Result<RepoInfo, String> {
-    let root = git::toplevel(Path::new(&path))?;
+    repo_info(&path)
+}
+
+fn repo_info(path: &str) -> Result<RepoInfo, String> {
+    let root = git::toplevel(Path::new(path))?;
     Ok(RepoInfo {
         name: root
             .file_name()
@@ -112,6 +117,10 @@ fn open_window(app: &AppHandle, repo: Option<PathBuf>) {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    if std::env::args().nth(1).as_deref() == Some("--core") {
+        headless::serve();
+        return;
+    }
     tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, args, cwd| {
             let repo = repo_from_args(&args, Path::new(&cwd));

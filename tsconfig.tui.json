@@ -1,0 +1,10 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "lib": ["ES2023"],
+    "types": ["node"]
+  },
+  "include": ["src/tui", "src/lib"],
+  "exclude": ["src/lib/api.ts", "src/lib/platform-tauri.ts", "src/lib/drag.ts", "src/lib/*.test.ts"],
+  "references": []
+}

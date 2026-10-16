@@ -1,6 +1,32 @@
 #!/bin/sh
 # Opens Prelude on a git repository: `prelude [path]` (defaults to the current directory).
 # If Prelude is already running, the repo opens in a new window of that instance.
+#
+# `prelude --tui [path]` (or `-t`) opens it in the terminal instead.
+#
+# `prelude --hook` is a Claude Code UserPromptSubmit hook: when .prelude/review.md has changed
+# since it was last handed over, it adds the review to the prompt being sent.
+
+if [ "$1" = "--hook" ]; then
+  input=$(cat)
+  cwd=$(printf '%s' "$input" | sed -n 's/.*"cwd" *: *"\([^"]*\)".*/\1/p')
+  root=$(git -C "${cwd:-.}" rev-parse --show-toplevel 2>/dev/null) || exit 0
+  review="$root/.prelude/review.md"
+  seen="$root/.prelude/review.seen"
+  [ -f "$review" ] || exit 0
+  sum=$(cksum < "$review")
+  [ "$sum" = "$(cat "$seen" 2>/dev/null)" ] && exit 0
+  printf '%s\n' "$sum" > "$seen"
+  # Claude Code truncates large hook output, so point at the file instead of inlining it.
+  if [ "$(wc -c < "$review")" -gt 9000 ]; then
+    echo "The user left a new Prelude review in $review. Read it and work through it as part of this request."
+  else
+    echo "The user left a new Prelude review (from $review). Work through it as part of this request:"
+    echo
+    cat "$review"
+  fi
+  exit 0
+fi
 
 APP="${PRELUDE_APP:-/Applications/Prelude.app}"
 BIN="$APP/Contents/MacOS/prelude"
@@ -10,6 +36,11 @@ if [ ! -x "$BIN" ]; then
   exit 1
 fi
 
+tui=
+case "$1" in
+  --tui | -t) tui=1; shift ;;
+esac
+
 target="${1:-.}"
 dir=$(cd "$target" 2>/dev/null && pwd) || {
   echo "prelude: not a directory: $target" >&2
@@ -18,6 +49,17 @@ dir=$(cd "$target" 2>/dev/null && pwd) || {
 if ! git -C "$dir" rev-parse --show-toplevel >/dev/null 2>&1; then
   echo "prelude: not inside a git repository: $dir" >&2
   exit 1
+fi
+
+if [ -n "$tui" ]; then
+  # This script is usually a symlink into the Prelude checkout, which holds the built terminal UI.
+  src=$(dirname "$(dirname "$(realpath "$0")")")
+  bundle="$src/dist-tui/prelude-tui.mjs"
+  if [ ! -f "$bundle" ]; then
+    echo "prelude: terminal UI not built; run \`pnpm build:tui\` in $src" >&2
+    exit 1
+  fi
+  PRELUDE_CORE="$BIN" exec node "$bundle" "$dir"
 fi
 
 nohup "$BIN" "$dir" >/dev/null 2>&1 &

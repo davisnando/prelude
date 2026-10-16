@@ -1,7 +1,5 @@
 import { create } from "zustand";
-import { writeText } from "@tauri-apps/plugin-clipboard-manager";
-import { getCurrentWindow } from "@tauri-apps/api/window";
-import { api } from "./api";
+import { platform } from "./platform";
 import { locateAll, makeAnchor } from "./anchor";
 import { buildReview, exportable } from "./output";
 import type {
@@ -71,13 +69,15 @@ interface Store {
   setActiveFile(path: string | null): void;
   copyReview(): Promise<void>;
   notify(message: string, kind?: Toast["kind"]): void;
+  /** Writes any pending state change now (e.g. before quitting). */
+  flush(): Promise<void>;
 }
 
 const EMPTY_BRANCH: BranchState = { comments: [], summary: "", viewed: {}, mode: "branch", baseRef: null };
 
 function readLocal<T>(key: string, fallback: T): T {
   try {
-    const v = localStorage.getItem(key);
+    const v = platform().storage.get(key);
     return v ? (JSON.parse(v) as T) : fallback;
   } catch {
     return fallback;
@@ -86,7 +86,7 @@ function readLocal<T>(key: string, fallback: T): T {
 
 function writeLocal(key: string, value: unknown) {
   try {
-    localStorage.setItem(key, JSON.stringify(value));
+    platform().storage.set(key, JSON.stringify(value));
   } catch {
     /* storage unavailable; not critical */
   }
@@ -120,21 +120,25 @@ let toastId = 0;
 export const useStore = create<Store>((set, get) => {
   const branchState = (): BranchState => get().persisted.branches[get().branch] ?? EMPTY_BRANCH;
 
+  const saveNow = async () => {
+    clearTimeout(saveTimer);
+    saveTimer = undefined;
+    const { repo, persisted } = get();
+    if (!repo) return;
+    const branches: Record<string, BranchState> = {};
+    for (const [k, v] of Object.entries(persisted.branches)) {
+      if (v.comments.length || v.summary || Object.keys(v.viewed).length || v.mode !== "branch" || v.baseRef) {
+        branches[k] = v;
+      }
+    }
+    await platform().api.saveState(repo.root, JSON.stringify({ version: 1, branches }, null, 2)).catch((e) =>
+      get().notify(`Could not save review state: ${e}`, "error"),
+    );
+  };
+
   const scheduleSave = () => {
     clearTimeout(saveTimer);
-    saveTimer = setTimeout(() => {
-      const { repo, persisted } = get();
-      if (!repo) return;
-      const branches: Record<string, BranchState> = {};
-      for (const [k, v] of Object.entries(persisted.branches)) {
-        if (v.comments.length || v.summary || Object.keys(v.viewed).length || v.mode !== "branch" || v.baseRef) {
-          branches[k] = v;
-        }
-      }
-      api.saveState(repo.root, JSON.stringify({ version: 1, branches }, null, 2)).catch((e) =>
-        get().notify(`Could not save review state: ${e}`, "error"),
-      );
-    }, 250);
+    saveTimer = setTimeout(saveNow, 250);
   };
 
   const updateBranch = (fn: (b: BranchState) => BranchState) => {
@@ -153,13 +157,13 @@ export const useStore = create<Store>((set, get) => {
     const { mode, baseRef } = branchState();
     set({ loading: true });
     try {
-      let diff = await api.getDiff(repo.root, mode, baseRef);
+      let diff = await platform().api.getDiff(repo.root, mode, baseRef);
       if (diff.branch !== get().branch) {
         // Branch switched under us: load that branch's settings and diff again.
         const next = get().persisted.branches[diff.branch] ?? EMPTY_BRANCH;
         set({ branch: diff.branch, selection: null, composer: null });
         if (next.mode !== mode || next.baseRef !== baseRef) {
-          diff = await api.getDiff(repo.root, next.mode, next.baseRef);
+          diff = await platform().api.getDiff(repo.root, next.mode, next.baseRef);
         }
       }
       if (get().repo?.root !== repo.root) return;
@@ -195,8 +199,8 @@ export const useStore = create<Store>((set, get) => {
 
     async openRepo(path) {
       try {
-        const repo = await api.openRepo(path);
-        const persisted = parseState(await api.loadState(repo.root));
+        const repo = await platform().api.openRepo(path);
+        const persisted = parseState(await platform().api.loadState(repo.root));
         set({
           repo,
           persisted,
@@ -211,8 +215,8 @@ export const useStore = create<Store>((set, get) => {
           locations: new Map(),
         });
         rememberRepo(repo);
-        getCurrentWindow().setTitle(`${repo.name} — Prelude`).catch(() => {});
-        api.watchRepo(repo.root).catch((e) => get().notify(`Live reload unavailable: ${e}`, "error"));
+        platform().setTitle(`${repo.name} — Prelude`);
+        platform().api.watchRepo(repo.root).catch((e) => get().notify(`Live reload unavailable: ${e}`, "error"));
         await get().refresh();
       } catch (e) {
         get().notify(String(e), "error");
@@ -221,7 +225,7 @@ export const useStore = create<Store>((set, get) => {
 
     closeRepo() {
       set({ repo: null, diff: null, error: null, selection: null, composer: null });
-      getCurrentWindow().setTitle("Prelude").catch(() => {});
+      platform().setTitle("Prelude");
     },
 
     async refresh() {
@@ -350,12 +354,16 @@ export const useStore = create<Store>((set, get) => {
       }
       const markdown = buildReview({ diff, comments, locations, summary });
       try {
-        await writeText(markdown);
-        await api.writeReview(repo.root, markdown);
+        await platform().copyText(markdown);
+        await platform().api.writeReview(repo.root, markdown);
         get().notify(`Copied ${count} comment${count === 1 ? "" : "s"} · saved to .prelude/review.md`);
       } catch (e) {
         get().notify(`Copy failed: ${e}`, "error");
       }
+    },
+
+    flush() {
+      return saveTimer === undefined ? Promise.resolve() : saveNow();
     },
 
     notify(message, kind = "ok") {

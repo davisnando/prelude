@@ -31,7 +31,7 @@ Review state lives in `.prelude/` at the repo root. Prelude adds that folder to 
 
 ## Install
 
-Requires Rust, Node 20+, pnpm and Xcode command line tools.
+Requires Rust, Node 22+, pnpm and Xcode command line tools.
 
 ```sh
 pnpm install
@@ -47,11 +47,53 @@ Then, in any repository:
 prelude .
 ```
 
+### In the terminal
+
+```sh
+prelude --tui .    # or: prelude -t
+```
+
+Same review, same `.prelude/` state and same copied output as the app, in a full-screen terminal UI. It runs the installed app's backend without opening a window, so `pnpm install:mac` (which also builds the terminal UI) is still the install step, and it needs Node 22+ at runtime.
+
+| Key | Action |
+| --- | --- |
+| `↑` `↓` `pgup` `pgdn` `g` `G` | Move the cursor |
+| `space` or `shift+↑↓` | Select a range of lines |
+| `c` or `enter` | Comment on the line or selection (`enter` on `⋯` shows the hidden lines) |
+| `f` / `o` | Comment on the whole file / overall notes |
+| `e` `x` `d` | Edit, resolve or reopen, delete the comment under the cursor |
+| `←` / `→` | Previous / next file |
+| `n` / `p` | Next / previous open comment |
+| `v` `s` `m` `b` | Viewed, split view (`tab` switches sides), uncommitted only, base branch |
+| `t` `r` `?` `q` | File list, refresh, all keys, quit |
+| `y` | Copy review |
+
+While writing a comment: `enter` saves, `ctrl+j` (or `shift+enter` / `alt+enter` where the terminal sends them) adds a line, `tab` changes the severity, `ctrl+o` adds a suggested change prefilled with the selected lines, `ctrl+g` opens `$EDITOR`, and `esc` cancels.
+
+Colours follow a dark terminal unless `PRELUDE_THEME=light` is set (or the terminal reports a light background through `COLORFGBG`). Copying uses `pbcopy` (or `wl-copy`/`xclip`), falling back to the terminal's OSC 52 clipboard.
+
+Don't keep the app and the terminal UI open on the same repo at once: each saves its own copy of the review state, so the last one to save wins.
+
+### Hand reviews to Claude Code automatically
+
+Add this to `~/.claude/settings.json`:
+
+```json
+{
+  "hooks": {
+    "UserPromptSubmit": [{ "hooks": [{ "type": "command", "command": "prelude --hook" }] }]
+  }
+}
+```
+
+After you press **Copy review**, the next message you send to Claude Code includes the review, so "go" is enough. Each review is sent only once (the hook records what it sent in `.prelude/review.seen`), and repos without a review are left alone. Long reviews are passed as a pointer to `.prelude/review.md` instead of inline.
+
 ## Develop
 
 ```sh
 pnpm tauri dev                          # opens the repo picker
 PRELUDE_REPO=~/code/some-repo pnpm tauri dev
+pnpm tui ~/code/some-repo               # terminal UI against the debug backend (run `cargo build` in src-tauri first)
 pnpm test                               # frontend unit tests
 cd src-tauri && cargo test              # git/diff backend tests
 ```
@@ -64,3 +106,6 @@ cd src-tauri && cargo test              # git/diff backend tests
 - `src/lib/anchor.ts`: re-finds comments after the code changes
 - `src/lib/output.ts`: builds the Markdown review
 - `src/components/FileView.tsx`: diff rendering, line selection and comment threads
+- `src/lib/platform.ts`: what the shared store needs from its host (backend, clipboard, title, preferences)
+- `src-tauri/src/headless.rs`: `prelude --core`, the backend as JSON lines over stdio for the terminal UI
+- `src/tui/`: the terminal UI (Ink); `blocks.ts` turns a file's diff and comments into screen lines
