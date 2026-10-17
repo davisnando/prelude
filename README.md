@@ -37,6 +37,7 @@ Requires Rust, Node 22+, pnpm and Xcode command line tools.
 pnpm install
 pnpm install:mac                                    # builds and copies Prelude.app to /Applications
 ln -sf "$PWD/bin/prelude" /opt/homebrew/bin/prelude # or any directory on your PATH
+prelude install                                     # teaches your agents about Prelude (see below)
 ```
 
 Run `pnpm install:mac` again after changing the code. The `prelude` link points at this repo's script, so it doesn't need updating.
@@ -74,19 +75,17 @@ Colours follow a dark terminal unless `PRELUDE_THEME=light` is set (or the termi
 
 Don't keep the app and the terminal UI open on the same repo at once: each saves its own copy of the review state, so the last one to save wins.
 
-### Hand reviews to Claude Code automatically
+### Set up your agents
 
-Add this to `~/.claude/settings.json`:
-
-```json
-{
-  "hooks": {
-    "UserPromptSubmit": [{ "hooks": [{ "type": "command", "command": "prelude --hook" }] }]
-  }
-}
+```sh
+prelude install          # skill + Claude Code hook
+prelude install skill    # or just one of them
+prelude uninstall        # removes both again
 ```
 
-After you press **Copy review**, the next message you send to Claude Code includes the review, so "go" is enough. Each review is sent only once (the hook records what it sent in `.prelude/review.seen`), and repos without a review are left alone. Long reviews are passed as a pointer to `.prelude/review.md` instead of inline.
+**The skill** ([skills/prelude/SKILL.md](skills/prelude/SKILL.md)) tells an agent what a Prelude review is and how to work through it: every numbered item, must-fix first, questions answered before code changes, suggested changes applied as written, and a reply per item number. It also tells the agent to run `prelude .` when you ask to review its work. It is copied to `~/.claude/skills` and `~/.agents/skills` (Codex, Gemini CLI and other agents that read the shared folder), and to `~/.cursor/skills` and `~/.copilot/skills` when those are installed. Run `prelude install skill` again after updating Prelude to refresh the copies.
+
+**The hook** (Claude Code only) adds `prelude --hook` to `UserPromptSubmit` in `~/.claude/settings.json`, leaving your other settings and hooks alone. After you press **Copy review**, the next message you send to Claude Code includes the review, so "go" is enough. Each review is sent only once (the hook records what it sent in `.prelude/review.seen`), and repos without a review are left alone. Long reviews are passed as a pointer to `.prelude/review.md` instead of inline.
 
 ## Develop
 
